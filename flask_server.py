@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import base64
 import io
 from PIL import Image
+import traceback
 
 # Set your Fal-AI API key here
 os.environ["FAL_KEY"] = "0cfe8eba-b263-4236-a81f-81b56b7469fc:2dde287a6678c0de55006f658220fbeb"
@@ -99,7 +100,7 @@ def generate_image_endpoint():
         data = request.get_json()
         
         if not data or 'prompt' not in data:
-            return jsonify({'error': 'Missing prompt in request'}), 400
+            return jsonify({'error': 'Missing prompt in request', 'success': False}), 400
         
         prompt = data['prompt']
         lora_url = data.get('lora_url')
@@ -179,8 +180,14 @@ def generate_image_endpoint():
                     if img_response.status_code == 200:
                         img_base64 = base64.b64encode(img_response.content).decode('utf-8')
                         response_data['image_base64'] = img_base64
+                    else:
+                        error_message = f"Failed to download image for base64 conversion. Status: {img_response.status_code}, Body: {img_response.text}"
+                        app.logger.error(error_message)
+                        response_data['base64_error'] = error_message
                 except Exception as e:
-                    response_data['base64_error'] = str(e)
+                    error_details = traceback.format_exc()
+                    app.logger.error(f"Error during base64 conversion: {error_details}")
+                    response_data['base64_error'] = f"An unexpected error occurred during base64 conversion: {str(e)}"
             
             return jsonify(response_data)
         else:
@@ -188,25 +195,34 @@ def generate_image_endpoint():
             with job_lock:
                 if job_id in active_jobs:
                     active_jobs[job_id]['status'] = 'failed'
-                    active_jobs[job_id]['error'] = 'No images generated'
+                    active_jobs[job_id]['error'] = f'No images generated. Result: {result}'
             
+            error_message = 'No images were generated.'
+            details = f"The result from the generation service was empty or did not contain images. Full result: {result}"
+            app.logger.error(f"{error_message} {details}")
             return jsonify({
                 'success': False,
-                'error': 'No images were generated',
+                'error': error_message,
+                'details': details,
                 'job_id': job_id
             }), 500
             
     except Exception as e:
+        error_details = traceback.format_exc()
+        app.logger.error(f"Error in /generate-image endpoint: {error_details}")
+
         # Update job status if job_id exists
         if 'job_id' in locals():
             with job_lock:
                 if job_id in active_jobs:
                     active_jobs[job_id]['status'] = 'failed'
                     active_jobs[job_id]['error'] = str(e)
+                    active_jobs[job_id]['traceback'] = error_details
         
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'An unexpected error occurred in generate_image_endpoint: {str(e)}',
+            'traceback': error_details
         }), 500
 
 @app.route('/create-lora', methods=['POST'])
@@ -225,14 +241,14 @@ def create_lora_endpoint():
         data = request.get_json()
         
         if not data or 'name' not in data or 'images' not in data:
-            return jsonify({'error': 'Missing name or images in request'}), 400
+            return jsonify({'error': 'Missing name or images in request', 'success': False}), 400
         
         lora_name = data['name']
         images_base64 = data['images']
         steps = data.get('steps', 1000)
         
         if len(images_base64) < 5:
-            return jsonify({'error': 'Need at least 5 images for LoRA training'}), 400
+            return jsonify({'error': 'Need at least 5 images for LoRA training', 'success': False}), 400
         
         # Create job ID for tracking
         job_id = generate_job_id()
@@ -267,7 +283,9 @@ def create_lora_endpoint():
                         f.write(img_data)
                         
                 except Exception as e:
-                    return jsonify({'error': f'Failed to process image {i+1}: {str(e)}'}), 400
+                    error_details = traceback.format_exc()
+                    app.logger.error(f"Failed to process image {i+1}: {error_details}")
+                    return jsonify({'error': f'Failed to process image {i+1}: {str(e)}', 'success': False, 'traceback': error_details}), 400
             
             # Create zip file for upload
             zip_path = os.path.join(tempfile.gettempdir(), f"{lora_name}_{job_id}.zip")
@@ -333,11 +351,15 @@ def create_lora_endpoint():
                 with job_lock:
                     if job_id in active_jobs:
                         active_jobs[job_id]['status'] = 'failed'
-                        active_jobs[job_id]['error'] = 'LoRA creation failed'
+                        active_jobs[job_id]['error'] = f"LoRA creation failed. Result: {result}"
                 
+                error_message = 'LoRA creation failed - no data returned from training service.'
+                details = f"Fal-ai result: {result}"
+                app.logger.error(f"{error_message} {details}")
                 return jsonify({
                     'success': False,
-                    'error': 'LoRA creation failed - no data returned',
+                    'error': error_message,
+                    'details': details,
                     'job_id': job_id
                 }), 500
                 
@@ -351,16 +373,21 @@ def create_lora_endpoint():
                 pass
             
     except Exception as e:
+        error_details = traceback.format_exc()
+        app.logger.error(f"Error in /create-lora endpoint: {error_details}")
+
         # Update job status if job_id exists
         if 'job_id' in locals():
             with job_lock:
                 if job_id in active_jobs:
                     active_jobs[job_id]['status'] = 'failed'
                     active_jobs[job_id]['error'] = str(e)
+                    active_jobs[job_id]['traceback'] = error_details
         
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'An unexpected error occurred in create_lora_endpoint: {str(e)}',
+            'traceback': error_details
         }), 500
 
 @app.route('/job-status/<job_id>', methods=['GET'])
@@ -409,9 +436,12 @@ def list_loras():
         })
         
     except Exception as e:
+        error_details = traceback.format_exc()
+        app.logger.error(f"Error in /list-loras endpoint: {error_details}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'An unexpected error occurred in list_loras: {str(e)}',
+            'traceback': error_details
         }), 500
 
 @app.route('/download-image/<job_id>', methods=['GET'])
@@ -420,11 +450,11 @@ def download_image(job_id):
     try:
         with job_lock:
             if job_id not in active_jobs:
-                return jsonify({'error': 'Job not found'}), 404
+                return jsonify({'error': 'Job not found', 'success': False}), 404
             
             job_info = active_jobs[job_id]
             if job_info['status'] != 'completed' or 'image_url' not in job_info:
-                return jsonify({'error': 'Image not available'}), 404
+                return jsonify({'error': 'Image not available', 'success': False}), 404
             
             image_url = job_info['image_url']
         
@@ -438,10 +468,14 @@ def download_image(job_id):
                 download_name=f'generated_image_{job_id}.png'
             )
         else:
-            return jsonify({'error': 'Failed to download image'}), 500
+            error_message = f"Failed to download image. Status: {response.status_code}, Body: {response.text}"
+            app.logger.error(error_message)
+            return jsonify({'error': 'Failed to download image', 'details': error_message, 'success': False}), 500
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_details = traceback.format_exc()
+        app.logger.error(f"Error in /download-image/{job_id} endpoint: {error_details}")
+        return jsonify({'error': f"An unexpected error occurred: {str(e)}", 'success': False, 'traceback': error_details}), 500
 
 # Cleanup old jobs (runs every hour)
 def cleanup_old_jobs():
@@ -461,7 +495,7 @@ def cleanup_old_jobs():
                     del active_jobs[job_id]
                     
         except Exception as e:
-            print(f"Error in cleanup: {e}")
+            app.logger.error(f"Error in cleanup_old_jobs: {traceback.format_exc()}")
 
 if __name__ == '__main__':
     # Start cleanup thread
