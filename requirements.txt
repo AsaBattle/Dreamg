@@ -1,0 +1,5 @@
+fal_client
+requests
+flask
+flask-cors
+pillow 
