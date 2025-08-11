@@ -1,0 +1,32 @@
+# Qwen3-8B Local Server Requirements
+# Install PyTorch with CUDA 12.4 support first:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# Core ML Libraries
+transformers>=4.51.0
+accelerate>=0.20.0
+bitsandbytes>=0.41.0
+
+# Web Server
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# CUDA & GPU Monitoring
+nvidia-ml-py3>=7.352.0
+
+# Memory Optimization (optional but recommended)
+xformers>=0.0.20
+
+# Utilities
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+packaging>=21.0
+
+# Development & Debugging (optional)
+psutil>=5.9.0
+tqdm>=4.65.0
+
+# Note: Install PyTorch with CUDA support using:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
