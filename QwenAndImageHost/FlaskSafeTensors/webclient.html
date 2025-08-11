@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDXL Image Generator Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 500px; margin: 40px auto; background: #fff; padding: 2em; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { text-align: center; }
+        input[type="text"] { width: 100%; padding: 0.7em; margin-bottom: 1em; border: 1px solid #ccc; border-radius: 5px; font-size: 1em; }
+        button { width: 100%; padding: 0.7em; background: #ff6347; color: #fff; border: none; border-radius: 5px; font-size: 1em; cursor: pointer; }
+        button:disabled { background: #ccc; }
+        .image-preview { display: flex; justify-content: center; margin-top: 2em; }
+        .image-preview img { max-width: 100%; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .error { color: #c00; text-align: center; margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>SDXL Image Generator</h2>
+        <form id="promptForm">
+            <input type="text" id="promptInput" placeholder="Enter your prompt..." required />
+            <button type="submit" id="submitBtn">Generate Image</button>
+        </form>
+        <div class="image-preview" id="imagePreview"></div>
+        <div class="error" id="errorMsg"></div>
+    </div>
+    <script>
+        const form = document.getElementById('promptForm');
+        const promptInput = document.getElementById('promptInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const errorMsg = document.getElementById('errorMsg');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorMsg.textContent = '';
+            imagePreview.innerHTML = '';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Generating...';
+            try {
+                const response = await fetch('http://localhost:5000/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: promptInput.value })
+                });
+                const data = await response.json();
+                if (data.success && data.image_url) {
+                    imagePreview.innerHTML = `<img src="${data.image_url}" alt="Generated" />`;
+                } else {
+                    errorMsg.textContent = data.error || 'Failed to generate image.';
+                    if (data.image_url) {
+                        imagePreview.innerHTML = `<img src="${data.image_url}" alt="Placeholder" />`;
+                    }
+                }
+            } catch (err) {
+                errorMsg.textContent = 'Error connecting to backend.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate Image';
+            }
+        });
+    </script>
+</body>
+</html>
